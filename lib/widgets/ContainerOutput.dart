@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 
 class ContainerOutput extends StatelessWidget {
   final String header;
-  final String data;
+  final String value; // ← รับค่าที่แสดงผลโดยตรง
   final String unit;
 
   const ContainerOutput({
     super.key,
     required this.header,
-    required this.data,
+    required this.value,
     required this.unit,
   });
 
@@ -34,7 +34,7 @@ class ContainerOutput extends StatelessWidget {
           ),
           child: Center(
             child: Text(
-              '$data $unit',
+              '$value $unit',
               style: const TextStyle(fontSize: 15),
             ),
           ),
