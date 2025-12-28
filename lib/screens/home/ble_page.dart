@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../services/ble_service.dart';
-import '../widgets/health_dashboard.dart';
+import '../../services/ble_service.dart';
+import '../../widgets/health_dashboard.dart';
 
 class BlePage extends StatefulWidget {
   const BlePage({super.key});

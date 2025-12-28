@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart'; // อย่าลืมลง package นี้
 
 // Import ไฟล์ในโปรเจกต์ของคุณ
-import 'package:app_health/pages/BodyPage.dart';
-import 'package:app_health/pages/topbar.dart';
-import 'package:app_health/widgets/button.dart';
-import '../services/ble_service.dart';
+import 'package:app_health/screens/home/body_page.dart';
+import 'package:app_health/screens/home/topbar_page.dart';
+import 'package:app_health/widgets/menu_button.dart';
+import '../../services/ble_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -51,11 +51,8 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Self Care'),
-        backgroundColor: const Color(0xFFCCCCFF), // ปรับสีให้เข้าธีม
-      ),
-      body: SingleChildScrollView( // ใส่ ScrollView กันหน้าจอล้น
+      appBar: AppBar(title: const Text('Self Care')),
+      body: SingleChildScrollView(
         child: Column(
           children: [
             const topbar(),
@@ -63,13 +60,13 @@ class _HomePageState extends State<HomePage> {
             const MenuButtons(),
             const SizedBox(height: 5),
             
-            // ส่งข้อมูลจริง และสถานะ ไปยัง BodyPage ที่แก้ใหม่แล้ว
+            // 🔥 จุดที่ต้องแก้ครับ! ต้องเพิ่มบรรทัด traceLog เข้าไป
             BodyPage(
               healthData: bleService.healthData,
               connectionStatus: bleService.connectionStatus,
+              traceLog: bleService.traceLog, // <--- บรรทัดนี้สำคัญมาก!
             ),
             
-            // ลบ BlePage() ออก เพื่อไม่ให้หน้าจอซ้อนกัน
           ],
         ),
       ),
