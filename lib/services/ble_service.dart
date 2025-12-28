@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -6,111 +7,120 @@ import '../models/health_data.dart';
 class BleService {
   BluetoothDevice? device;
   BluetoothCharacteristic? characteristic;
+  StreamSubscription? _subscription; // ตัวจัดการ Stream (สำคัญ)
 
   String connectionStatus = "Disconnected";
   HealthData? healthData;
-
-  /// ✅ สำหรับ debug log (แก้ error traceLog)
   List<String> traceLog = [];
 
-  final Guid serviceUuid =
-      Guid("12345678-1234-1234-1234-1234567890ab");
-  final Guid charUuid =
-      Guid("abcd1234-ab12-cd34-ef56-1234567890ab");
+  final Guid serviceUuid = Guid("12345678-1234-1234-1234-1234567890ab");
+  final Guid charUuid = Guid("abcd1234-ab12-cd34-ef56-1234567890ab");
 
-  /// 🔧 helper log
   void _log(String text) {
     traceLog.add(text);
-    if (traceLog.length > 100) {
-      traceLog.removeAt(0);
-    }
-    debugPrint(text);
+    if (traceLog.length > 50) traceLog.removeAt(0);
+    debugPrint("[BleService] $text");
   }
 
-  /// 🔍 Scan และ connect
+  // ฟังก์ชัน Scan และ Connect
   void scanAndConnect(VoidCallback onUpdate) async {
     connectionStatus = "Scanning...";
-    _log("Scanning BLE devices...");
+    _log("Scanning...");
     onUpdate();
 
-    await FlutterBluePlus.startScan(
-      timeout: const Duration(seconds: 5),
-    );
+    // เริ่มสแกน
+    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
 
     FlutterBluePlus.scanResults.listen((results) async {
       for (var r in results) {
-        if (r.device.name == "ESP32-Health") {
-          _log("Found device: ESP32-Health");
+        if (r.device.name == "ESP32-Health") { // เช็คชื่อให้ตรงกับ ESP32
+          _log("Found ${r.device.name}!");
+          await FlutterBluePlus.stopScan();
 
+          device = r.device;
           connectionStatus = "Connecting...";
           onUpdate();
 
-          device = r.device;
-          await FlutterBluePlus.stopScan();
+          try {
+            // เชื่อมต่อ
+            await device!.connect(autoConnect: false);
+            connectionStatus = "Connected";
+            _log("Connected!");
+            onUpdate();
 
-          await device!.connect(autoConnect: false);
-          connectionStatus = "Connected";
-          _log("Connected to ESP32");
-          onUpdate();
-
-          await discoverServices(onUpdate);
+            // ค้นหา Service
+            await discoverServices(onUpdate);
+          } catch (e) {
+            connectionStatus = "Error: $e";
+            _log("Connect Error: $e");
+            onUpdate();
+          }
           break;
         }
       }
     });
   }
 
-  /// 🔎 Discover service + subscribe notify
+  // ฟังก์ชันค้นหา Service และเปิด Notify
   Future<void> discoverServices(VoidCallback onUpdate) async {
-    _log("Discovering services...");
-    final services = await device!.discoverServices();
+    _log("Discovering Services...");
+    List<BluetoothService> services = await device!.discoverServices();
 
     for (var s in services) {
       if (s.uuid == serviceUuid) {
-        _log("Service found");
-
         for (var c in s.characteristics) {
           if (c.uuid == charUuid) {
-            _log("Characteristic found");
             characteristic = c;
+            _log("Characteristic Found!");
 
-            // 🔥 สำคัญ (Android BLE)
-            await device!.requestMtu(247);
+            // ⚠️ 1. ยกเลิกการฟังอันเก่าก่อน (ถ้ามี)
+            await _subscription?.cancel();
 
-            // 🔔 เปิด notify
-            await c.setNotifyValue(true);
-
-            connectionStatus = "Receiving data...";
-            onUpdate();
-
-            // ✅ รับค่าจาก ESP32
-            c.value.listen((value) {
-              if (value.isEmpty) return;
-
-              final text = utf8.decode(value).trim();
-              _log("BLE RAW: $text");
-
-              try {
-                healthData = HealthData.fromJsonString(text);
-              } catch (e) {
-                _log("JSON parse error: $e");
+            // ⚠️ 2. ใช้ Stream ตัวใหม่: lastValueStream (รองรับทั้ง Read และ Notify)
+            // หรือถ้าเวอร์ชั่นเก่าใช้ c.value.listen ตามเดิม แต่ lastValueStream ชัวร์กว่า
+            _subscription = c.lastValueStream.listen((value) {
+              if (value.isNotEmpty) {
+                // แปลงข้อมูล
+                String text = utf8.decode(value).trim();
+                _log("Raw Data: $text");
+                
+                // แปลงเป็น Object
+                healthData = HealthData.fromCsvString(text);
+                
+                // อัปเดตหน้าจอ
+                onUpdate();
               }
-
-              onUpdate();
             });
+
+            // ⚠️ 3. เพิ่ม Delay เล็กน้อยก่อนเปิด Notify (สูตรแก้ Android เชื่อมต่อแล้วเงียบ)
+            await Future.delayed(const Duration(milliseconds: 500));
+
+            // ⚠️ 4. เปิด Notify
+            try {
+              await c.setNotifyValue(true);
+              _log("Notify Enabled ✅");
+              connectionStatus = "Receiving Data...";
+            } catch (e) {
+              _log("Notify Error: $e");
+            }
+            
+            // ลองอ่านค่าครั้งแรกทันที (กระตุ้นให้ข้อมูลมา)
+            try {
+               await c.read();
+            } catch(e) {}
+            
+            onUpdate();
           }
         }
       }
     }
   }
 
-  /// ❌ Disconnect
-  Future<void> disconnect(VoidCallback onUpdate) async {
-    if (device != null) {
-      await device!.disconnect();
-      connectionStatus = "Disconnected";
-      _log("Disconnected");
-      onUpdate();
-    }
+  // ฟังก์ชัน Disconnect
+  Future<void> disconnect() async {
+    _subscription?.cancel(); // อย่าลืมปิด Stream
+    await device?.disconnect();
+    connectionStatus = "Disconnected";
+    device = null;
   }
 }

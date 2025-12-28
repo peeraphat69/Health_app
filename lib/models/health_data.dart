@@ -11,13 +11,21 @@ class HealthData {
     required this.bmi,
   });
 
-  factory HealthData.fromJsonString(String jsonString) {
-    final Map<String, dynamic> json = jsonDecode(jsonString);
+  // ❌ ลบอันเดิม (fromJsonString) ออก
+  // ✅ ใช้อันใหม่นี้แทน (รับค่าแบบ "65.5,170,22.6")
+  factory HealthData.fromCsvString(String data) {
+    // แยกข้อความด้วยเครื่องหมายคอมม่า
+    final parts = data.split(','); 
+
+    // ป้องกัน Error กรณีข้อมูลมาไม่ครบ
+    if (parts.length < 3) {
+      return HealthData(weight: 0, height: 0, bmi: 0);
+    }
 
     return HealthData(
-      weight: (json['weight'] as num).toDouble(),
-      height: (json['height'] as num).toDouble(),
-      bmi: (json['bmi'] as num).toDouble(),
+      weight: double.tryParse(parts[0]) ?? 0.0, // ตัวที่ 1: น้ำหนัก
+      height: double.tryParse(parts[1]) ?? 0.0, // ตัวที่ 2: ส่วนสูง
+      bmi: double.tryParse(parts[2]) ?? 0.0,    // ตัวที่ 3: BMI
     );
   }
 }

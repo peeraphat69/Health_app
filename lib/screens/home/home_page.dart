@@ -1,12 +1,10 @@
-import 'dart:io'; // สำหรับเช็ค Platform
-import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart'; // อย่าลืมลง package นี้
-
-// Import ไฟล์ในโปรเจกต์ของคุณ
+import 'dart:io'; 
 import 'package:app_health/screens/home/body_page.dart';
-import 'package:app_health/screens/home/topbar_page.dart';
-import 'package:app_health/widgets/menu_button.dart';
+import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+
 import '../../services/ble_service.dart';
+
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -16,57 +14,90 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  // สร้าง Instance ของ Service
   final BleService bleService = BleService();
 
   @override
   void initState() {
     super.initState();
-    // เรียกฟังก์ชันตั้งค่าเริ่มต้น (ขอสิทธิ์ + สแกน)
     _initBle();
   }
 
   Future<void> _initBle() async {
-    // 1. ขออนุญาต (Permissions) สำหรับ Android
+    // ... (โค้ดขอ Permission เดิมของคุณ) ...
     if (Platform.isAndroid) {
-      // ขอสิทธิ์ Location และ Bluetooth 
-      // (สำคัญมากสำหรับ Android 12+ และเวอร์ชั่นเก่า)
       await [
         Permission.location,
         Permission.bluetoothScan,
         Permission.bluetoothConnect,
-        Permission.bluetoothAdvertise, // เผื่อไว้
       ].request();
     }
-
-    // 2. สั่งเริ่มสแกนและเชื่อมต่อ
+    
     bleService.scanAndConnect(() {
-      // เมื่อมีข้อมูลใหม่ หรือสถานะเปลี่ยน ให้รีเฟรชหน้าจอ
-      if (mounted) {
-        setState(() {});
-      }
+      if (mounted) setState(() {});
     });
+  }
+
+  // ✅ ฟังก์ชันสำหรับปุ่ม Refresh (ทำงานเหมือน Test Read)
+  Future<void> _refreshData() async {
+    if (bleService.connectionStatus != "Connected") {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ยังไม่ได้เชื่อมต่ออุปกรณ์')),
+      );
+      return;
+    }
+
+    try {
+      if (bleService.characteristic != null) {
+        // สั่งอ่านค่าจากอุปกรณ์ทันที
+        await bleService.characteristic!.read();
+        
+        // แจ้งเตือนผู้ใช้ว่าอัพเดทแล้ว
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('รีเฟรชข้อมูลเรียบร้อย!'),
+            duration: Duration(milliseconds: 800), // โชว์แป๊บเดียวพอ
+          ),
+        );
+      }
+    } catch (e) {
+      print("Refresh Error: $e");
+    }
+  }
+
+  void _saveData() {
+    // ... (โค้ดบันทึกเดิม) ...
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Self Care')),
+      appBar: AppBar(
+        title: const Text('Self Care'),
+        backgroundColor: const Color(0xFFB19CD8),
+        
+        // 🔥 เพิ่มปุ่ม Refresh ตรงนี้ครับ (มุมขวาบน)
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            tooltip: 'รีเฟรชข้อมูล',
+            onPressed: _refreshData, // กดแล้วเรียกฟังก์ชันอ่านค่า
+          ),
+          const SizedBox(width: 10), // เว้นระยะขวานิดนึง
+        ],
+      ),
+      
       body: SingleChildScrollView(
         child: Column(
           children: [
-            const topbar(),
             const SizedBox(height: 10),
-            const MenuButtons(),
-            const SizedBox(height: 5),
             
-            // 🔥 จุดที่ต้องแก้ครับ! ต้องเพิ่มบรรทัด traceLog เข้าไป
             BodyPage(
               healthData: bleService.healthData,
               connectionStatus: bleService.connectionStatus,
-              traceLog: bleService.traceLog, // <--- บรรทัดนี้สำคัญมาก!
+              traceLog: bleService.traceLog,
+              onSave: _saveData,
+              // onTestRead: _refreshData, // ถ้าอยากให้ปุ่มส้มในหน้าจอทำงานด้วย ก็ใส่ฟังก์ชันเดียวกันได้เลย
             ),
-            
           ],
         ),
       ),
